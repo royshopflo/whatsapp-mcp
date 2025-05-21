@@ -765,3 +765,90 @@ def download_media(message_id: str, chat_jid: str) -> Optional[str]:
     except Exception as e:
         print(f"Unexpected error: {str(e)}")
         return None
+
+def classify_group_messages(messages: List[Message], shopflo_team_numbers: List[str], response_time_threshold_minutes: int = 60) -> str:
+    """
+    Classify a merchant group based on recent messages.
+    Args:
+        messages: List of Message objects (sorted by timestamp ascending)
+        shopflo_team_numbers: List of phone numbers (as strings) representing Shopflo team
+        response_time_threshold_minutes: Minutes threshold for delayed response
+    Returns:
+        str: One of 'Needs attention', 'At risk', 'Stable Merchant', 'Internal Only'
+    """
+    import re
+    from datetime import timedelta
+    
+    # If all senders are internal, return 'Internal Only'
+    if messages and all(msg.is_from_me or msg.sender in shopflo_team_numbers for msg in messages):
+        return "Internal Only"
+
+    # Define keywords for negative sentiment
+    negative_keywords = [
+        r"annoyed", r"angry", r"disappointed", r"sad", r"frustrated", r"upset", r"not happy", r"bad experience", r"unhappy", r"issue", r"problem", r"complain", r"complaint", r"delay", r"waiting", r"no response", r"not working", r"doesn't work", r"does not work"
+    ]
+    
+    # 1. Check for negative sentiment from merchants
+    for msg in messages:
+        if not msg.is_from_me and msg.sender not in shopflo_team_numbers:
+            for pattern in negative_keywords:
+                if msg.content and re.search(pattern, msg.content, re.IGNORECASE):
+                    return "Needs attention"
+    
+    # 2. Check for delayed Shopflo team response
+    last_merchant_msg_time = None
+    for msg in messages:
+        if not msg.is_from_me and msg.sender not in shopflo_team_numbers:
+            last_merchant_msg_time = msg.timestamp
+        elif msg.is_from_me or msg.sender in shopflo_team_numbers:
+            if last_merchant_msg_time:
+                delay = msg.timestamp - last_merchant_msg_time
+                if delay > timedelta(minutes=response_time_threshold_minutes):
+                    return "At risk"
+                last_merchant_msg_time = None
+    
+    # 3. Otherwise, stable
+    return "Stable Merchant"
+
+if __name__ == "__main__":
+    from datetime import datetime, timedelta
+    # Mock Message class for testing
+    class MockMessage:
+        def __init__(self, timestamp, sender, content, is_from_me):
+            self.timestamp = timestamp
+            self.sender = sender
+            self.content = content
+            self.is_from_me = is_from_me
+
+    shopflo_team = ["1111", "2222"]
+    now = datetime.now()
+
+    # Test 1: Needs attention (negative sentiment)
+    msgs1 = [
+        MockMessage(now - timedelta(minutes=10), "3333", "I am very disappointed with Shopflo", False),
+        MockMessage(now - timedelta(minutes=5), "1111", "We are looking into it", True)
+    ]
+    assert classify_group_messages(msgs1, shopflo_team) == "Needs attention"
+
+    # Test 2: At risk (delayed response)
+    msgs2 = [
+        MockMessage(now - timedelta(minutes=70), "4444", "Hello, anyone there?", False),
+        MockMessage(now, "1111", "Sorry for the delay", True)
+    ]
+    assert classify_group_messages(msgs2, shopflo_team) == "At risk"
+
+    # Test 3: Stable Merchant
+    msgs3 = [
+        MockMessage(now - timedelta(minutes=10), "5555", "Thank you!", False),
+        MockMessage(now - timedelta(minutes=5), "1111", "You're welcome!", True)
+    ]
+    assert classify_group_messages(msgs3, shopflo_team) == "Stable Merchant"
+
+    # Test 4: Internal Only (all senders are internal)
+    msgs4 = [
+        MockMessage(now - timedelta(minutes=10), "1111", "Internal update", True),
+        MockMessage(now - timedelta(minutes=5), "2222", "Another internal message", False)
+    ]
+    assert classify_group_messages(msgs4, shopflo_team) == "Internal Only"
+
+    print("All tests passed.")
