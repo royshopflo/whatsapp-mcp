@@ -1,0 +1,24 @@
+# Add Shopflo team phone numbers below, one per line
+# Format: the phone number part without country code or special characters
+# Example: 9876543210
+# These numbers will be used to identify messages from Shopflo team members
+# vs. messages from merchants
+
+
+
+# A-Team group members
+916360853874
+919614843573
+919353813560
+918105989714
+919755070067
+919742425214
+916360821425
+919380025483
+918072742683
+919092961380
+919678463786
+918088947852
+918830902422
+
+# Add more team numbers below 
