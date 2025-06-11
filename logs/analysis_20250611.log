@@ -1,0 +1,39 @@
+[2025-06-11 19:05:42 IST] ==============================================
+[2025-06-11 19:05:42 IST] STARTING AUTOMATED WHATSAPP ANALYSIS
+[2025-06-11 19:05:42 IST] ==============================================
+[2025-06-11 19:05:42 IST] Working directory: /Users/macbook/whatsapp-mcp-2
+[2025-06-11 19:05:42 IST] Checking WhatsApp bridge status...
+[2025-06-11 19:05:42 IST] ✅ WhatsApp bridge is running
+[2025-06-11 19:05:42 IST] ✅ Python script found: /Users/macbook/whatsapp-mcp-2/send_to_whatsapp_group.py
+[2025-06-11 19:05:42 IST] Running WhatsApp analysis and message sender...
+[2025-06-11 19:05:42 IST] Using uv package manager...
+📱 Shopflo (OB) Groups Analysis Sender
+================================================================================
+Checking WhatsApp API availability...
+✅ WhatsApp API is accessible
+🚀 WhatsApp Group Message Sender
+============================================================
+Target Group: Shopflo onboarding-internal
+Group JID: 120363321177381611@g.us
+============================================================
+
+Step 1: Verifying group exists...
+✅ Found group: Shopflo onboarding-internal
+
+Step 2: Formatting message...
+✅ Message formatted (1854 characters)
+
+Step 3: Sending message to Shopflo onboarding-internal...
+✅ MESSAGE SENT SUCCESSFULLY!
+📤 Response: Message sent to 120363321177381611@g.us
+🎯 Sent to: Shopflo onboarding-internal
+
+🎉 ANALYSIS SUCCESSFULLY SENT TO TEAM!
+📋 The analysis has been delivered to 'Shopflo onboarding-internal' group
+✨ Team members will now be aware of critical merchant groups requiring attention
+[2025-06-11 19:06:58 IST] ✅ SUCCESS: Analysis sent successfully to WhatsApp group
+[2025-06-11 19:06:58 IST] 📱 Message delivered to 'Shopflo onboarding-internal' group
+[2025-06-11 19:06:58 IST] ==============================================
+[2025-06-11 19:06:58 IST] AUTOMATED ANALYSIS COMPLETED
+[2025-06-11 19:06:58 IST] ==============================================
+[2025-06-11 19:06:58 IST] Script execution completed
