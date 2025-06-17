@@ -165,7 +165,8 @@ def main():
 
 if __name__ == "__main__":
     try:
-        main()
+        success = main()
+        sys.exit(0 if success else 1)
     except KeyboardInterrupt:
         print("\n⚠️  Operation cancelled by user")
         sys.exit(1)
