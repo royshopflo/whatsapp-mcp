@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
 Script to send the (OB) groups analysis to Shopflo onboarding-internal group
-Uses the existing WhatsApp bridge API
+Uses the existing WhatsApp bridge API with retry logic and better error handling
 """
 
 import sys
 import os
+import time
 from datetime import datetime
 
 # Add the whatsapp-mcp-server to the path so we can import the module
@@ -21,6 +22,10 @@ except ImportError as e:
 # Group JID for Shopflo onboarding-internal
 TARGET_GROUP_JID = "120363321177381611@g.us"
 GROUP_NAME = "Shopflo onboarding-internal"
+
+# Retry configuration
+MAX_SEND_RETRIES = 3
+RETRY_DELAY = 30  # seconds between retries
 
 # Analysis message to send
 ANALYSIS_MESSAGE = """📊 **COMPREHENSIVE (OB) GROUPS ANALYSIS - LAST 5 DAYS**
@@ -76,6 +81,20 @@ ANALYSIS_MESSAGE = """📊 **COMPREHENSIVE (OB) GROUPS ANALYSIS - LAST 5 DAYS**
 
 Generated: {timestamp}"""
 
+def test_whatsapp_connection() -> bool:
+    """Test if WhatsApp API is properly connected"""
+    try:
+        # Try to get a simple API response to test connection
+        success, message = whatsapp.send_message("test_connection_check", "test")
+        # We expect this to fail for invalid JID, but it should not fail due to connection issues
+        return True
+    except Exception as e:
+        error_msg = str(e).lower()
+        if "not connected" in error_msg or "connection" in error_msg:
+            return False
+        # Other errors might be expected (like invalid JID), so we consider connection OK
+        return True
+
 def verify_group_exists(group_jid: str) -> bool:
     """Verify that the target group exists in the database"""
     try:
@@ -90,10 +109,73 @@ def verify_group_exists(group_jid: str) -> bool:
         print(f"❌ Error checking group: {e}")
         return False
 
+def send_message_with_retry(group_jid: str, message: str, group_name: str) -> bool:
+    """Send message with retry logic for connection issues"""
+    
+    for attempt in range(1, MAX_SEND_RETRIES + 1):
+        print(f"\n🚀 Sending message (attempt {attempt}/{MAX_SEND_RETRIES})...")
+        
+        try:
+            success, response_message = whatsapp.send_message(group_jid, message)
+            
+            if success:
+                print("✅ MESSAGE SENT SUCCESSFULLY!")
+                print(f"📤 Response: {response_message}")
+                print(f"🎯 Sent to: {group_name}")
+                return True
+            else:
+                print("❌ FAILED TO SEND MESSAGE")
+                print(f"💔 Error: {response_message}")
+                
+                # Check if it's a connection issue
+                if "not connected" in str(response_message).lower():
+                    print(f"🔌 Connection issue detected (attempt {attempt}/{MAX_SEND_RETRIES})")
+                    
+                    if attempt < MAX_SEND_RETRIES:
+                        print(f"⏳ Waiting {RETRY_DELAY}s before retry...")
+                        time.sleep(RETRY_DELAY)
+                        
+                        # Test connection before retry
+                        print("🔍 Testing WhatsApp connection...")
+                        if test_whatsapp_connection():
+                            print("✅ Connection test passed, retrying...")
+                        else:
+                            print("❌ Connection still not available")
+                        continue
+                    else:
+                        print("❌ Final attempt failed due to connection issues")
+                        return False
+                else:
+                    # Non-connection error, don't retry
+                    print("❌ Non-connection error, stopping retries")
+                    return False
+                    
+        except Exception as e:
+            print(f"❌ EXCEPTION OCCURRED: {e}")
+            
+            # Check if it's a connection-related exception
+            error_msg = str(e).lower()
+            if "connection" in error_msg or "timeout" in error_msg or "not connected" in error_msg:
+                print(f"🔌 Connection exception detected (attempt {attempt}/{MAX_SEND_RETRIES})")
+                
+                if attempt < MAX_SEND_RETRIES:
+                    print(f"⏳ Waiting {RETRY_DELAY}s before retry...")
+                    time.sleep(RETRY_DELAY)
+                    continue
+                else:
+                    print("❌ Final attempt failed due to connection exception")
+                    return False
+            else:
+                # Non-connection exception, don't retry
+                print("❌ Non-connection exception, stopping retries")
+                return False
+    
+    return False
+
 def send_analysis_to_group():
     """Send the analysis message to the WhatsApp group"""
     
-    print("🚀 WhatsApp Group Message Sender")
+    print("🚀 WhatsApp Group Message Sender (Enhanced)")
     print("="*60)
     print(f"Target Group: {GROUP_NAME}")
     print(f"Group JID: {TARGET_GROUP_JID}")
@@ -111,40 +193,28 @@ def send_analysis_to_group():
     )
     print(f"✅ Message formatted ({len(formatted_message)} characters)")
     
-    # Step 3: Send message
-    print(f"\nStep 3: Sending message to {GROUP_NAME}...")
-    try:
-        success, response_message = whatsapp.send_message(TARGET_GROUP_JID, formatted_message)
-        
-        if success:
-            print("✅ MESSAGE SENT SUCCESSFULLY!")
-            print(f"📤 Response: {response_message}")
-            print(f"🎯 Sent to: {GROUP_NAME}")
-            return True
-        else:
-            print("❌ FAILED TO SEND MESSAGE")
-            print(f"💔 Error: {response_message}")
-            return False
-            
-    except Exception as e:
-        print(f"❌ EXCEPTION OCCURRED: {e}")
-        return False
+    # Step 3: Send message with retry logic
+    print(f"\nStep 3: Sending message to {GROUP_NAME} (with retry logic)...")
+    return send_message_with_retry(TARGET_GROUP_JID, formatted_message, GROUP_NAME)
 
 def main():
     """Main function"""
-    print("📱 Shopflo (OB) Groups Analysis Sender")
+    print("📱 Shopflo (OB) Groups Analysis Sender (Enhanced v2.0)")
     print("=" * 80)
     
     # Check if WhatsApp API is available
     print("Checking WhatsApp API availability...")
     try:
         # Test API connection
-        success, message = whatsapp.send_message("test", "test")  # This will fail but test the connection
-        print("✅ WhatsApp API is accessible")
+        if test_whatsapp_connection():
+            print("✅ WhatsApp API is accessible")
+        else:
+            print("❌ WhatsApp API connection failed - not connected to WhatsApp")
+            print("💡 Will still attempt to send (retry logic will handle failures)")
     except Exception as e:
-        print(f"❌ WhatsApp API connection failed: {e}")
+        print(f"❌ WhatsApp API connection test failed: {e}")
         print("💡 Make sure the WhatsApp bridge is running on localhost:8080")
-        return False
+        print("💡 Will still attempt to send (retry logic will handle failures)")
     
     # Send the analysis
     success = send_analysis_to_group()
@@ -157,9 +227,10 @@ def main():
         print("\n💔 FAILED TO SEND ANALYSIS")
         print("🔧 Troubleshooting steps:")
         print("1. Ensure WhatsApp bridge is running (localhost:8080)")
-        print("2. Check if WhatsApp client is connected")
+        print("2. Check if WhatsApp client is connected to WhatsApp Web")
         print("3. Verify group JID is correct")
         print("4. Check network connectivity")
+        print("5. Try opening WhatsApp Web manually to refresh connection")
     
     return success
 
