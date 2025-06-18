@@ -202,9 +202,39 @@ type SendMessageRequest struct {
 	MediaPath string `json:"media_path,omitempty"`
 }
 
+// refreshDeviceConnections helps prevent timeout issues by periodically refreshing device sync
+func refreshDeviceConnections(client *whatsmeow.Client) error {
+	if !client.IsConnected() {
+		return fmt.Errorf("client not connected")
+	}
+
+	// Try to refresh the device list by sending a simple presence update
+	err := client.SendPresence(types.PresenceAvailable)
+	if err != nil {
+		return fmt.Errorf("failed to send presence update: %v", err)
+	}
+
+	// Small delay to allow sync
+	time.Sleep(1 * time.Second)
+
+	return nil
+}
+
 // Function to send a WhatsApp message
 func sendWhatsAppMessage(client *whatsmeow.Client, recipient string, message string, mediaPath string) (bool, string) {
-	if !client.IsConnected() {
+	// More resilient connection check - try to send even if IsConnected returns false initially
+	// Sometimes IsConnected() returns false during brief connection establishment periods
+	connectionCheckPassed := client.IsConnected()
+	if !connectionCheckPassed {
+		// Wait a moment and try again
+		time.Sleep(1 * time.Second)
+		connectionCheckPassed = client.IsConnected()
+	}
+
+	// Log connection status for debugging
+	fmt.Printf("Connection check: %v\n", connectionCheckPassed)
+
+	if !connectionCheckPassed {
 		return false, "Not connected to WhatsApp"
 	}
 
@@ -361,14 +391,50 @@ func sendWhatsAppMessage(client *whatsmeow.Client, recipient string, message str
 		msg.Conversation = proto.String(message)
 	}
 
-	// Send message
-	_, err = client.SendMessage(context.Background(), recipientJID, msg)
+	// Implement retry logic with improved timeout handling for device sync issues
+	maxRetries := 3
+	baseDelay := 2 * time.Second
 
-	if err != nil {
-		return false, fmt.Sprintf("Error sending message: %v", err)
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		// Create context with timeout for each attempt
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+
+		// Try to send the message
+		_, err = client.SendMessage(ctx, recipientJID, msg)
+		cancel() // Always cancel context to free resources
+
+		if err == nil {
+			// Success!
+			return true, fmt.Sprintf("Message sent to %s", recipient)
+		}
+
+		// Check if this is a timeout or device sync error
+		errStr := err.Error()
+		isTimeoutError := strings.Contains(errStr, "timeout") ||
+			strings.Contains(errStr, "failed to get device list") ||
+			strings.Contains(errStr, "info query timed out") ||
+			strings.Contains(errStr, "failed to send usync query")
+
+		if !isTimeoutError {
+			// Not a timeout error, don't retry
+			return false, fmt.Sprintf("Error sending message: %v", err)
+		}
+
+		if attempt < maxRetries {
+			// Wait before retrying with exponential backoff
+			delay := time.Duration(attempt) * baseDelay
+			fmt.Printf("Message send attempt %d failed with timeout, retrying in %v...\n", attempt, delay)
+			time.Sleep(delay)
+
+			// Check if client is still connected before retry
+			if !client.IsConnected() {
+				return false, "Connection lost during retry attempts"
+			}
+		}
 	}
 
-	return true, fmt.Sprintf("Message sent to %s", recipient)
+	// All retries failed
+	return false, fmt.Sprintf("Error sending message after %d attempts: %v", maxRetries, err)
 }
 
 // Extract media info from a message
@@ -907,6 +973,26 @@ func main() {
 
 	// Start REST API server
 	startRESTServer(client, messageStore, 8080)
+
+	// Start background goroutine to refresh device connections periodically
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute) // Refresh every 5 minutes
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				if client.IsConnected() {
+					err := refreshDeviceConnections(client)
+					if err != nil {
+						fmt.Printf("Warning: Failed to refresh device connections: %v\n", err)
+					} else {
+						fmt.Printf("Device connections refreshed successfully\n")
+					}
+				}
+			}
+		}
+	}()
 
 	// Create a channel to keep the main goroutine alive
 	exitChan := make(chan os.Signal, 1)
