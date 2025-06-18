@@ -27,57 +27,33 @@ GROUP_NAME = "Shopflo onboarding-internal"
 MAX_SEND_RETRIES = 3
 RETRY_DELAY = 30  # seconds between retries
 
-# Analysis message to send
-ANALYSIS_MESSAGE = """📊 **COMPREHENSIVE (OB) GROUPS ANALYSIS - LAST 5 DAYS**
+# Import dynamic analysis
+try:
+    from dynamic_analysis import main as generate_dynamic_analysis
+    DYNAMIC_ANALYSIS_AVAILABLE = True
+except ImportError:
+    print("⚠️ Dynamic analysis not available, falling back to static message")
+    DYNAMIC_ANALYSIS_AVAILABLE = False
+
+# Fallback static message (used if dynamic analysis fails)
+FALLBACK_ANALYSIS_MESSAGE = """📊 **COMPREHENSIVE (OB) GROUPS ANALYSIS - LAST 5 DAYS**
+
+⚠️ **USING FALLBACK ANALYSIS** - Dynamic analysis temporarily unavailable
 
 🎯 **Executive Summary:**
-• 📊 Total Groups Analyzed: 118 (OB) groups with recent activity
-• 🏢 Internal Team Members: 62 identified from 5 internal groups
+• 📊 System monitoring active for (OB) groups
+• 🏢 WhatsApp bridge operational
+• 📅 Analysis system ready for real-time data
 
-📈 **Results Breakdown:**
-🚨 **NEEDS ATTENTION: 9 groups (7.6%)**
-⚠️ **AT RISK: 9 groups (7.6%)**  
-✅ **STABLE: 100 groups (84.8%)**
+📈 **Status:**
+🔄 **MONITORING: All groups being tracked**
+⚠️ **NOTICE: Using fallback analysis mode**  
+✅ **SYSTEM: Bridge and monitoring operational**
 
-🚨 **TOP CRITICAL GROUPS:**
-
-1. **🔴 (OB) Shopflo x Zilmor** - 50% negative sentiment
-   • Issue: "After internal discussions, we've decided not to proceed with moving our checkout"
-
-2. **🔴 (OB) Shopflo <> Urban Jungle** - 40% negative sentiment  
-   • Issues: GA4 attribution problems, broken functionality
-
-3. **🔴 (OB) Shopflo <> Flourish.shop** - 33% negative sentiment
-   • Issue: Following docs but still facing integration problems
-
-4. **🔴 (OB) Shopflo <> kayaralable** - 30% negative sentiment
-   • Issues: Urgent checkout errors, multiple technical problems
-
-5. **🔴 (OB) Shopflo <> Italian Shoe Company** - 25% negative sentiment
-   • Issue: Requesting refund
-
-🎯 **IMMEDIATE ACTION PLAN:**
-
-**Priority 1 (Next 2 Hours):**
-• Contact Zilmor - Address their decision to leave
-• Fix Urban Jungle - Resolve GA4 attribution issues
-• Support Flourish.shop - Debug integration problems
-
-**Priority 2 (Next 8 Hours):**
-• Resolve kayaralable checkout errors
-• Process Italian Shoe Company refund
-• Address Wood Gala payment gateway issues
-
-**Priority 3 (Next 24 Hours):**
-• Watch at-risk groups for escalation signs
-• Track sentiment trends in stable groups
-• Maintain response time standards
-
-✨ **Success Metrics:**
-• 85% of groups are stable with healthy communication
-• Response time issues eliminated due to proper internal team recognition
-• Focus on real merchant sentiment issues rather than internal coordination
-• Accurate prioritization of groups needing immediate attention
+🎯 **IMMEDIATE ACTION:**
+• Restore dynamic analysis capability
+• Verify WhatsApp data access
+• Check system dependencies
 
 Generated: {timestamp}"""
 
@@ -186,11 +162,26 @@ def send_analysis_to_group():
     if not verify_group_exists(TARGET_GROUP_JID):
         return False
     
-    # Step 2: Format message with timestamp
-    print("\nStep 2: Formatting message...")
-    formatted_message = ANALYSIS_MESSAGE.format(
-        timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    )
+    # Step 2: Generate dynamic analysis or use fallback
+    print("\nStep 2: Generating analysis message...")
+    
+    if DYNAMIC_ANALYSIS_AVAILABLE:
+        try:
+            print("🔄 Running dynamic analysis...")
+            formatted_message = generate_dynamic_analysis()
+            print("✅ Dynamic analysis generated successfully")
+        except Exception as e:
+            print(f"❌ Dynamic analysis failed: {e}")
+            print("🔄 Falling back to static message...")
+            formatted_message = FALLBACK_ANALYSIS_MESSAGE.format(
+                timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            )
+    else:
+        print("⚠️ Using fallback analysis message...")
+        formatted_message = FALLBACK_ANALYSIS_MESSAGE.format(
+            timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        )
+    
     print(f"✅ Message formatted ({len(formatted_message)} characters)")
     
     # Step 3: Send message with retry logic
