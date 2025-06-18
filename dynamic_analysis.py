@@ -70,14 +70,13 @@ class DynamicAnalyzer:
             for row in cursor.fetchall():
                 jid, name, last_message_time = row
                 
-                # Get recent messages for this group
+                # Get recent messages for this group - REMOVED LIMIT and updated date logic
                 cursor.execute("""
                     SELECT timestamp, sender, content, is_from_me, id
                     FROM messages
-                    WHERE chat_jid = ? AND timestamp >= ?
+                    WHERE chat_jid = ? AND DATE(timestamp) >= DATE(?)
                     ORDER BY timestamp DESC
-                    LIMIT 100
-                """, (jid, self.since_date.isoformat()))
+                """, (jid, self.since_date.strftime('%Y-%m-%d')))
                 
                 messages = []
                 for msg_row in cursor.fetchall():
@@ -89,16 +88,19 @@ class DynamicAnalyzer:
                         'id': msg_row[4]
                     })
                 
-                chat_dict = {
-                    'name': name,
-                    'jid': jid,
-                    'last_message_time': last_message_time,
-                    'recent_message_count': len(messages),
-                    'recent_messages': messages
-                }
-                ob_groups.append(chat_dict)
+                # Only include groups with recent activity
+                if messages:
+                    chat_dict = {
+                        'name': name,
+                        'jid': jid,
+                        'last_message_time': last_message_time,
+                        'recent_message_count': len(messages),
+                        'recent_messages': messages
+                    }
+                    ob_groups.append(chat_dict)
             
             conn.close()
+            print(f"📊 Found {len(ob_groups)} active (OB) groups with messages in last {self.lookback_days} days")
             return ob_groups
             
         except Exception as e:
@@ -137,8 +139,25 @@ class DynamicAnalyzer:
                     if row[0]:  # sender is not null
                         self.internal_team.add(row[0])
             
+            # Add specific EaseBuzz Integration group members as internal team
+            cursor.execute("""
+                SELECT DISTINCT messages.sender
+                FROM messages
+                JOIN chats ON messages.chat_jid = chats.jid
+                WHERE chats.name = 'Shopflo <> EaseBuzz Integration ( 102641 )'
+                AND messages.is_from_me = 0
+                AND chats.jid LIKE '%@g.us'
+            """)
+            
+            easebuzz_members = 0
+            for row in cursor.fetchall():
+                if row[0]:  # sender is not null
+                    self.internal_team.add(row[0])
+                    easebuzz_members += 1
+            
             conn.close()
             print(f"🏢 Identified {len(self.internal_team)} internal team members")
+            print(f"💼 Added {easebuzz_members} EaseBuzz Integration team members")
             
         except Exception as e:
             print(f"❌ Error identifying internal team: {e}")
@@ -217,6 +236,7 @@ class DynamicAnalyzer:
     def generate_analysis(self) -> str:
         """Generate dynamic analysis based on real data"""
         print("🔄 Generating dynamic analysis...")
+        print(f"📅 Analysis date range: {self.since_date.strftime('%Y-%m-%d')} to {self.analysis_date.strftime('%Y-%m-%d')} (today)")
         
         # Get all OB groups
         ob_groups = self.get_ob_groups()
@@ -272,7 +292,7 @@ class DynamicAnalyzer:
 🎯 **Executive Summary:**
 • 📊 Total Active Groups: {total_active_groups} (OB) groups with recent activity
 • 🏢 Internal Team Members: {len(self.internal_team)} identified
-• 📅 Analysis Period: {self.since_date.strftime('%Y-%m-%d')} to {self.analysis_date.strftime('%Y-%m-%d')}
+• 📅 Analysis Period: {self.since_date.strftime('%Y-%m-%d')} to {self.analysis_date.strftime('%Y-%m-%d')} (TODAY)
 
 📈 **Current Status Breakdown:**
 🚨 **NEEDS ATTENTION: {len(critical_groups)} groups ({len(critical_groups)/total_active_groups*100:.1f}%)**
