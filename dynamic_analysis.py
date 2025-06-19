@@ -8,7 +8,7 @@ import sys
 import os
 import json
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional, Tuple
 from collections import defaultdict, Counter
 import re
@@ -24,9 +24,27 @@ except ImportError as e:
 
 class DynamicAnalyzer:
     def __init__(self):
-        self.analysis_date = datetime.now()
-        self.lookback_days = 5
-        self.since_date = self.analysis_date - timedelta(days=self.lookback_days)
+        # Use IST timezone to match database timestamps (+05:30)
+        ist_offset = timezone(timedelta(hours=5, minutes=30))
+        self.analysis_date = datetime.now(ist_offset)
+        
+        # Dynamic lookback based on time of day
+        current_hour = self.analysis_date.hour
+        
+        if 6 <= current_hour < 12:  # Morning (6AM-12PM): Look at last 18 hours
+            self.lookback_hours = 18
+            self.period_name = "MORNING"
+        elif 12 <= current_hour < 18:  # Afternoon (12PM-6PM): Look at last 6 hours  
+            self.lookback_hours = 6
+            self.period_name = "AFTERNOON"
+        else:  # Evening/Night (6PM-6AM): Look at last 12 hours
+            self.lookback_hours = 12
+            self.period_name = "EVENING"
+            
+        self.since_date = self.analysis_date - timedelta(hours=self.lookback_hours)
+        
+        # Also keep a broader context for comparison (last 24 hours)
+        self.comparison_since_date = self.analysis_date - timedelta(hours=24)
         
         # Sentiment keywords
         self.negative_keywords = [
@@ -70,13 +88,13 @@ class DynamicAnalyzer:
             for row in cursor.fetchall():
                 jid, name, last_message_time = row
                 
-                # Get recent messages for this group - REMOVED LIMIT and updated date logic
+                # Get recent messages for this group - using hour-based analysis with timezone
                 cursor.execute("""
                     SELECT timestamp, sender, content, is_from_me, id
                     FROM messages
-                    WHERE chat_jid = ? AND DATE(timestamp) >= DATE(?)
+                    WHERE chat_jid = ? AND timestamp >= ?
                     ORDER BY timestamp DESC
-                """, (jid, self.since_date.strftime('%Y-%m-%d')))
+                """, (jid, self.since_date.strftime('%Y-%m-%d %H:%M:%S%z')))
                 
                 messages = []
                 for msg_row in cursor.fetchall():
@@ -100,7 +118,9 @@ class DynamicAnalyzer:
                     ob_groups.append(chat_dict)
             
             conn.close()
-            print(f"📊 Found {len(ob_groups)} active (OB) groups with messages in last {self.lookback_days} days")
+            print(f"📊 Found {len(ob_groups)} active (OB) groups with messages in last {self.lookback_hours} hours")
+            print(f"🕐 Analysis time: {self.analysis_date.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+            print(f"🕐 Since time: {self.since_date.strftime('%Y-%m-%d %H:%M:%S %Z')}")
             return ob_groups
             
         except Exception as e:
@@ -284,15 +304,15 @@ class DynamicAnalyzer:
         total_active_groups = len(critical_groups) + len(at_risk_groups) + len(stable_groups)
         
         if total_active_groups == 0:
-            return "❌ No active (OB) groups found in the last 5 days"
+            return f"❌ No active (OB) groups found in the last {self.lookback_hours} hours ({self.period_name} analysis)"
         
         # Create dynamic message
-        analysis_message = f"""📊 **LIVE (OB) GROUPS ANALYSIS - LAST {self.lookback_days} DAYS**
+        analysis_message = f"""📊 **LIVE (OB) GROUPS {self.period_name} ANALYSIS - LAST {self.lookback_hours} HOURS**
 
 🎯 **Executive Summary:**
 • 📊 Total Active Groups: {total_active_groups} (OB) groups with recent activity
 • 🏢 Internal Team Members: {len(self.internal_team)} identified
-• 📅 Analysis Period: {self.since_date.strftime('%Y-%m-%d')} to {self.analysis_date.strftime('%Y-%m-%d')} (TODAY)
+• 📅 Analysis Period: {self.since_date.strftime('%Y-%m-%d %H:%M')} to {self.analysis_date.strftime('%Y-%m-%d %H:%M')} ({self.period_name})
 
 📈 **Current Status Breakdown:**
 🚨 **NEEDS ATTENTION: {len(critical_groups)} groups ({len(critical_groups)/total_active_groups*100:.1f}%)**
