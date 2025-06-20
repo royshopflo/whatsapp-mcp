@@ -28,18 +28,47 @@ class DynamicAnalyzer:
         ist_offset = timezone(timedelta(hours=5, minutes=30))
         self.analysis_date = datetime.now(ist_offset)
         
-        # Dynamic lookback based on time of day
+        # Improved dynamic lookback based on specific scheduled times
         current_hour = self.analysis_date.hour
         
-        if 6 <= current_hour < 12:  # Morning (6AM-12PM): Look at last 18 hours
-            self.lookback_hours = 18
-            self.period_name = "MORNING"
-        elif 12 <= current_hour < 18:  # Afternoon (12PM-6PM): Look at last 6 hours  
-            self.lookback_hours = 6
+        # More granular analysis periods for 6 runs per day to avoid duplicates
+        if current_hour == 10:  # 10:00 AM: Look at overnight activity (last 16 hours)
+            self.lookback_hours = 16
+            self.period_name = "MORNING_START"
+            self.analysis_focus = "Overnight and early morning merchant activity"
+        elif current_hour == 11:  # 11:00 AM: Look at last 2 hours (since 10am run)
+            self.lookback_hours = 2
+            self.period_name = "MORNING_UPDATE"
+            self.analysis_focus = "Recent morning activity since last check"
+        elif current_hour == 12:  # 12:00 PM: Look at last 3 hours (morning summary)
+            self.lookback_hours = 3
+            self.period_name = "MIDDAY"
+            self.analysis_focus = "Late morning to noon activity"
+        elif current_hour == 14:  # 02:00 PM: Look at last 3 hours (lunch period)
+            self.lookback_hours = 3
             self.period_name = "AFTERNOON"
-        else:  # Evening/Night (6PM-6AM): Look at last 12 hours
-            self.lookback_hours = 12
+            self.analysis_focus = "Lunch time and early afternoon activity"
+        elif current_hour == 16:  # 04:00 PM: Look at last 3 hours (afternoon work)
+            self.lookback_hours = 3
+            self.period_name = "LATE_AFTERNOON"
+            self.analysis_focus = "Mid to late afternoon merchant interactions"
+        elif current_hour == 18:  # 06:00 PM: Look at last 3 hours (end of day)
+            self.lookback_hours = 3
             self.period_name = "EVENING"
+            self.analysis_focus = "End of business day activity"
+        else:  # Fallback for other times
+            if 6 <= current_hour < 12:  # Early morning
+                self.lookback_hours = 6
+                self.period_name = "EARLY_MORNING"
+                self.analysis_focus = "Early morning merchant activity"
+            elif 12 <= current_hour < 18:  # Afternoon
+                self.lookback_hours = 4
+                self.period_name = "GENERAL_AFTERNOON"
+                self.analysis_focus = "General afternoon activity"
+            else:  # Evening/Night
+                self.lookback_hours = 8
+                self.period_name = "NIGHT"
+                self.analysis_focus = "Evening and night merchant activity"
             
         self.since_date = self.analysis_date - timedelta(hours=self.lookback_hours)
         
@@ -121,6 +150,8 @@ class DynamicAnalyzer:
             print(f"📊 Found {len(ob_groups)} active (OB) groups with messages in last {self.lookback_hours} hours")
             print(f"🕐 Analysis time: {self.analysis_date.strftime('%Y-%m-%d %H:%M:%S %Z')}")
             print(f"🕐 Since time: {self.since_date.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+            print(f"🎯 Analysis focus: {getattr(self, 'analysis_focus', 'Standard analysis')}")
+            print(f"📈 Period: {self.period_name}")
             return ob_groups
             
         except Exception as e:
