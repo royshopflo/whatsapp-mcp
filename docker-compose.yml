@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  whatsapp-bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: whatsapp-bridge
+    ports:
+      - "8080:8080"
+    volumes:
+      - whatsapp_store:/app/whatsapp-bridge/store
+      - app_logs:/app/logs
+    environment:
+      - TZ=UTC
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - whatsapp-network
+
+  whatsapp-mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    container_name: whatsapp-mcp-server
+    depends_on:
+      whatsapp-bridge:
+        condition: service_healthy
+    volumes:
+      - whatsapp_store:/app/whatsapp-bridge/store:ro
+      - app_logs:/app/logs
+    environment:
+      - WHATSAPP_API_BASE_URL=http://whatsapp-bridge:8080/api
+      - TZ=UTC
+    restart: unless-stopped
+    networks:
+      - whatsapp-network
+    profiles:
+      - mcp  # Optional profile to run MCP server separately
+
+networks:
+  whatsapp-network:
+    driver: bridge
+
+volumes:
+  whatsapp_store:
+  app_logs: 

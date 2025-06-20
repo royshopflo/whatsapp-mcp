@@ -1,0 +1,62 @@
+# Git and version control
+.git
+.gitignore
+*.md
+LICENSE
+
+# Logs and runtime files
+logs/
+*.log
+*.pid
+whatsapp_bridge.pid
+
+# Python cache and virtual environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+ENV/
+
+# Go build artifacts
+whatsapp-bridge/main
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Database files (will be mounted as volumes)
+whatsapp-bridge/store/
+*.db
+*.db-journal
+
+# Backup files
+crontab_backup_*
+*.backup
+
+# Development files
+example-use.png
+.cursor/
+.vscode/
+
+# Test files
+test_*
+*_test.py
+
+# Temporary files
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# Documentation that's not needed in container
+COMPREHENSIVE_DOCUMENTATION.md
+DOCUMENTATION.md
+PROJECT_DOCUMENTATION.md
+README_*.md
+CRON_FIX_SUMMARY.md
+timeout_fix_summary.md 

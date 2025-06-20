@@ -117,8 +117,12 @@ fi
 
 # Check Python environment
 PYTHON_CHECK=$(python3 -c "import requests, sys; print('OK')" 2>&1)
-if [ "$PYTHON_CHECK" = "OK" ]; then
+if echo "$PYTHON_CHECK" | grep -q "OK"; then
     log_success "✅ Python environment is ready"
+    # Show warnings if they exist but don't treat them as errors
+    if echo "$PYTHON_CHECK" | grep -v "OK" | grep -q "Warning"; then
+        log_warning "Python SSL warnings detected (non-critical): $(echo "$PYTHON_CHECK" | grep Warning | head -1)"
+    fi
 else
     log_error "Python environment check failed: $PYTHON_CHECK"
     log_info "Attempting to install required packages..."
@@ -126,7 +130,7 @@ else
     
     # Re-check
     PYTHON_CHECK=$(python3 -c "import requests, sys; print('OK')" 2>&1)
-    if [ "$PYTHON_CHECK" = "OK" ]; then
+    if echo "$PYTHON_CHECK" | grep -q "OK"; then
         log_success "✅ Python packages installed successfully"
     else
         log_error "Failed to install required Python packages"

@@ -1,0 +1,41 @@
+# Dockerfile for WhatsApp MCP Server
+FROM python:3.11-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    ffmpeg \
+    sqlite3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.cargo/bin:$PATH"
+
+# Create app directory
+WORKDIR /app
+
+# Copy Python MCP server files
+COPY whatsapp-mcp-server/ ./whatsapp-mcp-server/
+
+# Copy additional Python scripts if needed
+COPY *.py ./
+
+# Change to MCP server directory and install dependencies
+WORKDIR /app/whatsapp-mcp-server
+
+# Install Python dependencies using uv
+RUN uv sync
+
+# Create necessary directories
+RUN mkdir -p /app/whatsapp-bridge/store /app/logs
+
+# Set environment variable for database path
+ENV MESSAGES_DB_PATH=/app/whatsapp-bridge/store/messages.db
+
+# Health check (optional - checks if the MCP server process can start)
+HEALTHCHECK --interval=60s --timeout=10s --start-period=10s --retries=3 \
+    CMD python -c "import sys; sys.path.append('.'); import main" || exit 1
+
+# Start the MCP server
+CMD ["uv", "run", "main.py"] 
