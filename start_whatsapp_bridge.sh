@@ -3,6 +3,9 @@
 # WhatsApp Bridge Startup Script
 # This script starts the WhatsApp bridge and ensures it stays running
 
+# Set PATH to include Go binary location
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$PATH"
+
 SCRIPT_DIR="/Users/macbook/whatsapp-mcp-2"
 BRIDGE_DIR="$SCRIPT_DIR/whatsapp-bridge"
 LOG_DIR="$SCRIPT_DIR/logs"
@@ -28,6 +31,12 @@ is_bridge_running() {
             return 1
         fi
     fi
+    
+    # Also check for any running bridge processes
+    if ps aux | grep -v grep | grep -E "(./main|go run main.go)" | grep -q whatsapp-bridge; then
+        return 0
+    fi
+    
     return 1
 }
 
@@ -40,9 +49,16 @@ start_bridge() {
         exit 1
     }
     
-    # Start the bridge in background
-    nohup go run main.go >> "$BRIDGE_LOG" 2>&1 &
-    BRIDGE_PID=$!
+    # Start the bridge in background using compiled binary (faster and more reliable)
+    if [ -f "./main" ]; then
+        log_message "Using compiled binary"
+        nohup ./main >> "$BRIDGE_LOG" 2>&1 &
+        BRIDGE_PID=$!
+    else
+        log_message "Using go run (compiling on-the-fly)"
+        nohup go run main.go >> "$BRIDGE_LOG" 2>&1 &
+        BRIDGE_PID=$!
+    fi
     
     # Save PID
     echo $BRIDGE_PID > "$PID_FILE"

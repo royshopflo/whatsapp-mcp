@@ -35,9 +35,9 @@ echo
 
 # Check 3: WhatsApp Bridge Process
 echo "3️⃣ WhatsApp Bridge Process:"
-if ps aux | grep -v grep | grep "go run main.go" > /dev/null; then
+if ps aux | grep -v grep | grep -E "(go run main.go|/main$|./main)" > /dev/null; then
     echo "   ✅ WhatsApp bridge process is running"
-    ps aux | grep -v grep | grep "go run main.go" | while read line; do
+    ps aux | grep -v grep | grep -E "(go run main.go|/main$|./main)" | while read line; do
         echo "      $line"
     done
 else
@@ -147,7 +147,7 @@ if ! crontab -l 2>/dev/null | grep -q "automated_analysis.sh"; then
     ((ISSUES++))
 fi
 
-if ! ps aux | grep -v grep | grep "go run main.go" > /dev/null; then
+if ! ps aux | grep -v grep | grep -E "(go run main.go|/main$|./main)" > /dev/null; then
     echo "❌ WhatsApp bridge not running"
     ((ISSUES++))
 fi
