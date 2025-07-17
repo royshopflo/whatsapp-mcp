@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import datetime
 from dataclasses import dataclass
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict, Any
 import os.path
 import requests
 import json
@@ -46,6 +46,22 @@ class MessageContext:
     message: Message
     before: List[Message]
     after: List[Message]
+
+
+def message_to_dict(message: Message, show_chat_info: bool = True) -> Dict[str, Any]:
+    """Convert a ``Message`` dataclass into a serialisable dictionary."""
+    data = {
+        "timestamp": message.timestamp.isoformat(),
+        "sender": message.sender,
+        "content": message.content,
+        "is_from_me": message.is_from_me,
+        "chat_jid": message.chat_jid,
+        "id": message.id,
+        "media_type": message.media_type,
+    }
+    if show_chat_info and message.chat_name is not None:
+        data["chat_name"] = message.chat_name
+    return data
 
 def get_sender_name(sender_jid: str) -> str:
     try:
@@ -111,15 +127,21 @@ def format_message(message: Message, show_chat_info: bool = True) -> None:
         print(f"Error formatting message: {e}")
     return output
 
-def format_messages_list(messages: List[Message], show_chat_info: bool = True) -> None:
+def format_messages_list(messages: List[Message], show_chat_info: bool = True) -> str:
+    """Return a human readable string for a list of messages."""
     output = ""
     if not messages:
         output += "No messages to display."
         return output
-    
+
     for message in messages:
         output += format_message(message, show_chat_info)
     return output
+
+
+def messages_to_dict_list(messages: List[Message], show_chat_info: bool = True) -> List[Dict[str, Any]]:
+    """Convert a list of :class:`Message` objects to dictionaries."""
+    return [message_to_dict(m, show_chat_info) for m in messages]
 
 def list_messages(
     after: Optional[str] = None,
@@ -132,8 +154,12 @@ def list_messages(
     include_context: bool = True,
     context_before: int = 1,
     context_after: int = 1
-) -> List[Message]:
-    """Get messages matching the specified criteria with optional context."""
+) -> List[Dict[str, Any]]:
+    """Get messages matching the specified criteria with optional context.
+
+    Returns a list of dictionaries where each dictionary describes a message.
+    Time values are returned in ISO-8601 format.
+    """
     try:
         conn = sqlite3.connect(MESSAGES_DB_PATH)
         cursor = conn.cursor()
@@ -209,11 +235,11 @@ def list_messages(
                 messages_with_context.extend(context.before)
                 messages_with_context.append(context.message)
                 messages_with_context.extend(context.after)
-            
-            return format_messages_list(messages_with_context, show_chat_info=True)
-            
-        # Format and display messages without context
-        return format_messages_list(result, show_chat_info=True)    
+
+            return messages_to_dict_list(messages_with_context, show_chat_info=True)
+
+        # Return messages without context
+        return messages_to_dict_list(result, show_chat_info=True)
         
     except sqlite3.Error as e:
         print(f"Database error: {e}")
