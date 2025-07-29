@@ -202,6 +202,31 @@ type SendMessageRequest struct {
 	MediaPath string `json:"media_path,omitempty"`
 }
 
+// forceDeviceSync forces a device list sync to resolve sync issues
+func forceDeviceSync(client *whatsmeow.Client) error {
+	if !client.IsConnected() {
+		return fmt.Errorf("client not connected")
+	}
+
+	fmt.Println("🔄 Forcing device sync to resolve connection issues...")
+
+	// Send presence multiple times to trigger device sync
+	for i := 0; i < 3; i++ {
+		err := client.SendPresence(types.PresenceAvailable)
+		if err != nil {
+			fmt.Printf("⚠️ Presence send attempt %d failed: %v\n", i+1, err)
+		} else {
+			fmt.Printf("✅ Presence sent successfully (attempt %d/3)\n", i+1)
+		}
+		time.Sleep(2 * time.Second)
+	}
+
+	// Wait for sync to complete
+	fmt.Println("⏳ Waiting for device sync to complete...")
+	time.Sleep(10 * time.Second)
+	return nil
+}
+
 // refreshDeviceConnections helps prevent timeout issues by periodically refreshing device sync
 func refreshDeviceConnections(client *whatsmeow.Client) error {
 	if !client.IsConnected() {
@@ -396,8 +421,8 @@ func sendWhatsAppMessage(client *whatsmeow.Client, recipient string, message str
 	baseDelay := 2 * time.Second
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
-		// Create context with timeout for each attempt
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		// Create context with timeout for each attempt - increased timeout for sync issues
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 
 		// Try to send the message
 		_, err = client.SendMessage(ctx, recipientJID, msg)
@@ -413,7 +438,9 @@ func sendWhatsAppMessage(client *whatsmeow.Client, recipient string, message str
 		isTimeoutError := strings.Contains(errStr, "timeout") ||
 			strings.Contains(errStr, "failed to get device list") ||
 			strings.Contains(errStr, "info query timed out") ||
-			strings.Contains(errStr, "failed to send usync query")
+			strings.Contains(errStr, "failed to send usync query") ||
+			strings.Contains(errStr, "context deadline exceeded") ||
+			strings.Contains(errStr, "connection timeout")
 
 		if !isTimeoutError {
 			// Not a timeout error, don't retry
@@ -425,6 +452,12 @@ func sendWhatsAppMessage(client *whatsmeow.Client, recipient string, message str
 			delay := time.Duration(attempt) * baseDelay
 			fmt.Printf("Message send attempt %d failed with timeout, retrying in %v...\n", attempt, delay)
 			time.Sleep(delay)
+
+			// Try to force device sync if it's a device list error
+			if strings.Contains(errStr, "failed to get device list") || strings.Contains(errStr, "usync") {
+				fmt.Println("🔄 Attempting device sync before retry...")
+				forceDeviceSync(client)
+			}
 
 			// Check if client is still connected before retry
 			if !client.IsConnected() {
@@ -707,7 +740,7 @@ func downloadMedia(client *whatsmeow.Client, messageStore *MessageStore, message
 	}
 
 	// Download the media using whatsmeow client
-	mediaData, err := client.Download(downloader)
+	mediaData, err := client.Download(context.Background(), downloader)
 	if err != nil {
 		return false, "", "", "", fmt.Errorf("failed to download media: %v", err)
 	}
@@ -790,6 +823,34 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 	})
 
 	// Handler for downloading media
+	// Handler for status endpoint
+	http.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
+		// Only allow GET requests
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Check if client is connected
+		connected := client.IsConnected()
+
+		// Set response headers
+		w.Header().Set("Content-Type", "application/json")
+
+		// Send response
+		response := map[string]interface{}{
+			"connected": connected,
+			"status":    "running",
+		}
+		if connected {
+			response["message"] = "WhatsApp bridge is connected and ready"
+		} else {
+			response["message"] = "WhatsApp bridge is running but not connected"
+		}
+
+		json.NewEncoder(w).Encode(response)
+	})
+
 	http.HandleFunc("/api/download", func(w http.ResponseWriter, r *http.Request) {
 		// Only allow POST requests
 		if r.Method != http.MethodPost {
@@ -866,14 +927,14 @@ func main() {
 		return
 	}
 
-	container, err := sqlstore.New("sqlite3", "file:store/whatsapp.db?_foreign_keys=on", dbLog)
+	container, err := sqlstore.New(context.Background(), "sqlite3", "file:store/whatsapp.db?_foreign_keys=on", dbLog)
 	if err != nil {
 		logger.Errorf("Failed to connect to database: %v", err)
 		return
 	}
 
 	// Get device store - This contains session information
-	deviceStore, err := container.GetFirstDevice()
+	deviceStore, err := container.GetFirstDevice(context.Background())
 	if err != nil {
 		if err == sql.ErrNoRows {
 			// No device exists, create one
@@ -961,15 +1022,35 @@ func main() {
 		connected <- true
 	}
 
-	// Wait a moment for connection to stabilize
-	time.Sleep(2 * time.Second)
+	// Wait a moment for connection to stabilize and allow initial sync
+	fmt.Println("⏳ Waiting for initial sync to complete...")
+	time.Sleep(10 * time.Second)
+
+	// Check connection multiple times and wait for stabilization
+	for i := 0; i < 5; i++ {
+		if client.IsConnected() {
+			break
+		}
+		fmt.Printf("⏳ Connection check %d/5, waiting...\n", i+1)
+		time.Sleep(5 * time.Second)
+	}
 
 	if !client.IsConnected() {
-		logger.Errorf("Failed to establish stable connection")
+		logger.Errorf("Failed to establish stable connection after retries")
 		return
 	}
 
-	fmt.Println("\n✓ Connected to WhatsApp! Type 'help' for commands.")
+	fmt.Println("\n✅ Connected to WhatsApp!")
+
+	// Force initial device sync to prevent timeout issues
+	err = forceDeviceSync(client)
+	if err != nil {
+		fmt.Printf("⚠️ Warning: Device sync failed: %v\n", err)
+	} else {
+		fmt.Println("✅ Device sync completed successfully!")
+	}
+
+	fmt.Println("🚀 WhatsApp bridge is ready! Type 'help' for commands.")
 
 	// Start REST API server
 	startRESTServer(client, messageStore, 8080)
@@ -1074,7 +1155,7 @@ func GetChatName(client *whatsmeow.Client, messageStore *MessageStore, jid types
 		logger.Infof("Getting name for contact: %s", chatJID)
 
 		// Just use contact info (full name)
-		contact, err := client.Store.Contacts.GetContact(jid)
+		contact, err := client.Store.Contacts.GetContact(context.Background(), jid)
 		if err == nil && contact.FullName != "" {
 			name = contact.FullName
 		} else if sender != "" {

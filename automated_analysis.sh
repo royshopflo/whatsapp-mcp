@@ -6,7 +6,7 @@
 # Now includes retry logic and automatic connection recovery
 
 # Configuration
-SCRIPT_DIR="/Users/macbook/whatsapp-mcp-2"
+SCRIPT_DIR="/Users/macbook/whatsapp-mcp-3"
 LOG_DIR="$SCRIPT_DIR/logs"
 LOG_FILE="$LOG_DIR/analysis_$(date +%Y%m%d).log"
 PYTHON_SCRIPT="$SCRIPT_DIR/send_to_whatsapp_group.py"
